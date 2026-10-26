@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>كشف قبضي</title>
+<style>
+  :root{--navy:#16235c;--navy-deep:#0d1740;--orange:#f3941e;--bg:#f1f3f8;--line:#e2e5f0;--muted:#6b7290;--warn:#c0392b;--good:#1f8a5f}
+  *{box-sizing:border-box} body{margin:0;font-family:Tahoma,'Segoe UI',sans-serif;background:var(--bg);color:#1c2240}
+  .wrap{max-width:520px;margin:0 auto;padding:20px}
+  .login{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,var(--navy),var(--navy-deep));padding:20px}
+  .box{background:#fff;border-radius:16px;padding:26px;width:100%;max-width:380px;text-align:center}
+  .box h2{margin:0 0 16px;color:var(--navy)}
+  input{width:100%;padding:11px 12px;margin-bottom:10px;border:1.5px solid var(--line);border-radius:9px;font-size:14px;direction:ltr;text-align:center}
+  button{border:none;border-radius:9px;padding:11px 16px;font-weight:bold;cursor:pointer;font-size:14px}
+  .go{width:100%;background:var(--orange);color:#1c1300}
+  .lnk{background:none;color:var(--muted);font-size:12px;text-decoration:underline;margin-top:10px}
+  #msg{margin-top:10px;font-size:12.5px;color:var(--warn);min-height:16px}
+  .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+  .out{background:var(--navy);color:#fff}
+  .card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px 20px;margin-bottom:16px}
+  .card h3{margin:0 0 10px;color:var(--navy);font-size:15px;border-bottom:1px solid var(--line);padding-bottom:8px}
+  .ln{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px dashed var(--line);font-size:14px}
+  .ln.minus b{color:var(--warn)} .ln.plus b{color:var(--good)}
+  .tot{margin-top:12px;background:linear-gradient(135deg,var(--navy),var(--navy-deep));color:#fff;border-radius:12px;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid var(--orange)}
+  .tot b{font-size:22px;color:var(--orange)}
+</style>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+</head>
+<body>
+<div class="login" id="loginView">
+  <div class="box">
+    <h2>كشف قبضي</h2>
+    <input type="text" id="em" inputmode="numeric" maxlength="14" placeholder="الرقم القومي (14 رقم)" autocomplete="username">
+    <input type="password" id="pw" placeholder="كلمة السر" autocomplete="current-password">
+    <button class="go" id="go">دخول</button>
+    <div style="margin-top:12px;font-size:12px;color:var(--muted)">نسيت كلمة السر؟ تواصل مع الإدارة.</div>
+    <div id="msg"></div>
+  </div>
+</div>
+<div class="wrap" id="appView" style="display:none">
+  <div class="top"><b style="color:var(--navy)">كشف قبضي</b><button class="out" id="out">⏻ خروج</button></div>
+  <div id="list">جاري التحميل...</div>
+</div>
+<script>
+firebase.initializeApp({
+  apiKey: "AIzaSyDykzp2_4SJr7DjLkAmvHFSnCxXs_Ee9L0",
+  authDomain: "alshafei-steel.firebaseapp.com",
+  projectId: "alshafei-steel",
+  storageBucket: "alshafei-steel.firebasestorage.app",
+  messagingSenderId: "832213850052",
+  appId: "1:832213850052:web:40689e478773b5de793691"
+});
+const auth = firebase.auth(), db = firebase.firestore();
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const fmt = n => (Math.round((n||0)*100)/100).toLocaleString('ar-EG');
+
+const norm = v => String(v || '').replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/\D/g, '');
+$('go').onclick = async () => {
+  $('msg').textContent = '';
+  const nid = norm($('em').value);
+  if(nid.length !== 14){ $('msg').textContent = 'الرقم القومي لازم يكون 14 رقم.'; return; }
+  try{ await auth.signInWithEmailAndPassword(nid + '@workers.payroll.app', $('pw').value); }
+  catch(e){ $('msg').textContent = 'الرقم القومي أو كلمة السر غير صحيحة.'; }
+};
+$('out').onclick = () => auth.signOut();
+
+const line = (l, v, c) => '<div class="ln ' + (c||'') + '"><span>' + l + '</span><b>' + fmt(v) + ' ج</b></div>';
+
+auth.onAuthStateChanged(async (user) => {
+  if(!user){ $('loginView').style.display = 'flex'; $('appView').style.display = 'none'; return; }
+  $('loginView').style.display = 'none'; $('appView').style.display = 'block';
+  const box = $('list');
+  try{
+    const snap = await db.collection('payslips').where('email', '==', (user.email || '').toLowerCase()).get();
+    const items = snap.docs.map(d => d.data()).sort((a, b) => (b.month || '').localeCompare(a.month || ''));
+    if(!items.length){ box.innerHTML = '<div class="card">لا توجد كشوف قبض مرسلة لك حتى الآن.</div>'; return; }
+    box.innerHTML = items.map(p => { const r = p.r || {};
+      return '<div class="card"><h3>' + esc(p.label) + ' — ' + esc(p.name) + '</h3>' +
+        line('المرتب الأساسي', r.baseSalary) +
+        (r.overtimeAmount ? line('الإضافي', r.overtimeAmount, 'plus') : '') +
+        (r.holidayAmount ? line('الإجازات', r.holidayAmount, 'plus') : '') +
+        (r.lateAmount ? line('خصم التأخير', r.lateAmount, 'minus') : '') +
+        (r.absentAmount ? line('خصم الغياب', r.absentAmount, 'minus') : '') +
+        (r.advance ? line('السلف', r.advance, 'minus') : '') +
+        (r.discount ? line('خصومات', r.discount, 'minus') : '') +
+        (r.carryDeduct ? line('خصم من المرحّل', r.carryDeduct, 'minus') : '') +
+        '<div class="tot"><span>صافي القبض</span><b>' + fmt(r.total) + ' ج</b></div></div>';
+    }).join('');
+  }catch(e){ box.innerHTML = '<div class="card">تعذر تحميل الكشوف.</div>'; }
+});
+</script>
+</body>
+</html>
